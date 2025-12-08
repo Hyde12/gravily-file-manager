@@ -12,7 +12,7 @@ use ratatui::{
 
 use std::env::var;
 use std::ffi::OsString;
-use std::fs::{metadata, read_dir};
+use std::fs::{metadata, read_dir, read_to_string};
 use std::io;
 use std::path::PathBuf;
 
@@ -143,8 +143,10 @@ impl FileManager {
                                 .render(area, buf);
                             }
                         }
-                    } else {
-                        block.render(area, buf);
+                    } else if metadata.is_file() {
+                        if let Ok(file_text) = read_to_string(&cur_path) {
+                            Paragraph::new(file_text).block(block).render(area, buf);
+                        }
                     }
                 }
                 Err(e) => eprintln!(
@@ -212,10 +214,10 @@ impl FileManager {
     fn handle_key_event(&mut self, key: KeyEvent) -> Action {
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
-            KeyCode::Char('s') | KeyCode::Down => Action::NextItem,
-            KeyCode::Char('w') | KeyCode::Up => Action::PreviousItem,
-            KeyCode::Enter | KeyCode::Right => Action::EnterItem,
-            KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
+            KeyCode::Char('j') | KeyCode::Down => Action::NextItem,
+            KeyCode::Char('k') | KeyCode::Up => Action::PreviousItem,
+            KeyCode::Char('l') | KeyCode::Enter | KeyCode::Right => Action::EnterItem,
+            KeyCode::Char('h') | KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
             _ => Action::None,
         }
     }
