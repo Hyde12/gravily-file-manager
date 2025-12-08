@@ -47,6 +47,9 @@ impl FileManager {
                     eprintln!("Couldn't get USERPROFILE variable: {}", e);
                 }
             }
+        } else {
+            // assuming linux
+            self.path = PathBuf::from("~");
         }
 
         while !self.exit {
