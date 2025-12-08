@@ -1,10 +1,11 @@
 use std::env::var;
-use std::fs::read_dir;
+use std::fs::{ReadDir, metadata, read_dir};
 use std::io;
 use std::path::PathBuf;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::{List, ListState, StatefulWidget};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::widgets::{List, ListState, Paragraph, StatefulWidget};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
@@ -19,6 +20,7 @@ use whoami::DesktopEnv;
 #[derive(Debug, Default)]
 pub struct FileManager {
     path: PathBuf,
+    path_items: Vec<PathBuf>,
     exit: bool,
     state: ListState,
 }
@@ -54,22 +56,20 @@ impl FileManager {
             .title(path_text)
             .border_set(border::ROUNDED);
 
-        let items: Vec<String> = read_dir(&self.path)
+        self.path_items = read_dir(&self.path)
             .unwrap_or_else(|e| {
                 panic!("Failed to read directory: {}", e);
             })
             .filter_map(|entry_result| {
-                entry_result
-                    .ok()
-                    .map(|entry| entry.path()) // direntry -> pathbuf
-                    .map(|path_buf| match path_buf.strip_prefix(&self.path) {
-                        // pathbuf shortened to file/dir name
-                        Ok(new_path) => Some(new_path.to_owned()),
-                        Err(_) => None,
-                    })
-                    .flatten()
-                    .and_then(|path_buf| path_buf.to_str().map(str::to_owned)) // pathbuf to string
+                entry_result.ok().map(|entry| entry.path()) // direntry -> pathbuf
             })
+            .collect();
+
+        let items: Vec<String> = self
+            .path_items
+            .iter()
+            .filter_map(|path_buf| path_buf.strip_prefix(&self.path).ok())
+            .filter_map(|path_buf| path_buf.to_str().map(str::to_owned)) // pathbuf to string
             .collect();
 
         let list = List::new(items)
@@ -78,6 +78,63 @@ impl FileManager {
             .highlight_spacing(ratatui::widgets::HighlightSpacing::Always);
 
         StatefulWidget::render(list, area, buf, &mut self.state);
+    }
+
+    fn render_peekable_items(&mut self, area: Rect, buf: &mut Buffer) {
+        if let Some(path_val) = self.state.selected() {
+            let cur_path: PathBuf = [&self.path, &self.path_items[path_val]].iter().collect();
+
+            let block = Block::bordered()
+                .title(Line::from(vec![
+                    " ".into(),
+                    cur_path.to_str().unwrap().to_string().yellow(),
+                    " ".into(),
+                ]))
+                .border_set(border::ROUNDED);
+
+            match metadata(&cur_path) {
+                Ok(metadata) => {
+                    if metadata.is_dir() {
+                        match read_dir(&cur_path) {
+                            Ok(path) => {
+                                let items: Vec<String> = path
+                                    .filter_map(|entry_result| entry_result.ok())
+                                    .filter_map(|entry| {
+                                        let path_buf = entry.path();
+
+                                        path_buf
+                                            .strip_prefix(&cur_path)
+                                            .ok()
+                                            .map(|relative_path| {
+                                                relative_path.to_str().map(str::to_owned)
+                                            })
+                                            .flatten()
+                                    })
+                                    .collect();
+                                let list = List::new(items).block(block);
+                                Widget::render(list, area, buf);
+                            }
+                            Err(e) => {
+                                Paragraph::new(format!(
+                                    "Failed to read directory\n > {}\n\nError: {}",
+                                    &cur_path.display(),
+                                    e
+                                ))
+                                .block(block)
+                                .render(area, buf);
+                            }
+                        }
+                    } else {
+                        block.render(area, buf);
+                    }
+                }
+                Err(e) => eprintln!(
+                    "Error getting metadata of path: {}\n{}",
+                    cur_path.display(),
+                    e
+                ),
+            }
+        }
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -96,9 +153,9 @@ impl FileManager {
 
     fn handle_key_event(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Char('q') => self.exit(),
-            KeyCode::Down => self.select_next(),
-            KeyCode::Up => self.select_previous(),
+            KeyCode::Char('q') | KeyCode::Esc => self.exit(),
+            KeyCode::Char('s') | KeyCode::Down => self.select_next(),
+            KeyCode::Char('w') | KeyCode::Up => self.select_previous(),
             _ => {}
         }
     }
@@ -132,29 +189,16 @@ impl Widget for &mut FileManager {
             .title_bottom(instructions.centered())
             .border_set(border::PLAIN);
 
-        let inner_area = main_block.inner(area);
+        let inner_area = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(main_block.inner(area));
 
         main_block.render(area, buf);
 
-        let left_area = Rect::new(
-            inner_area.x,
-            inner_area.y,
-            inner_area.width / 2,
-            inner_area.height,
-        );
-        let right_area = Rect::new(
-            inner_area.x + inner_area.width / 2,
-            inner_area.y,
-            inner_area.width / 2,
-            inner_area.height,
-        );
-
-        let right_block = Block::bordered()
-            .title(Line::from(whoami::desktop_env().to_string()))
-            .border_set(border::ROUNDED);
-
-        self.render_file_items(left_area, buf);
-        right_block.render(right_area, buf);
+        self.render_file_items(inner_area[0], buf);
+        self.render_peekable_items(inner_area[1], buf);
+        // right_block.render(inner_area[1], buf);
     }
 }
 
