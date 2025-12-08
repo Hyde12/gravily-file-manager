@@ -40,16 +40,18 @@ impl FileManager {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         if whoami::desktop_env() == DesktopEnv::Windows {
             match var("USERPROFILE") {
-                Ok(default_path) => {
-                    self.path = PathBuf::from(default_path);
-                }
-                Err(e) => {
-                    eprintln!("Couldn't get USERPROFILE variable: {}", e);
-                }
+                Ok(default_path) => self.path = PathBuf::from(default_path),
+                Err(e) => eprintln!("Couldn't get USERPROFILE variable: {}", e),
             }
         } else {
             // assuming linux
-            self.path = PathBuf::from("~");
+            self.path = PathBuf::from("/home/");
+            self.path.push("/home/");
+
+            match var("USER") {
+                Ok(user) => self.path.push(user),
+                Err(e) => eprintln!("Couldn't get USER variable: {}", e),
+            }
         }
 
         while !self.exit {
