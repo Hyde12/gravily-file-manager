@@ -11,16 +11,27 @@ use ratatui::{
 };
 
 use std::env::var;
+use std::ffi::OsString;
 use std::fs::{metadata, read_dir};
 use std::io;
 use std::path::PathBuf;
 
 use whoami::DesktopEnv;
 
+enum Action {
+    NextItem,
+    PreviousItem,
+    EnterItem,
+    ExitItem,
+    Quit,
+    None,
+}
+
 #[derive(Debug, Default)]
 pub struct FileManager {
     path: PathBuf,
-    path_items: Vec<PathBuf>,
+    path_items: Vec<OsString>,
+    past_states: Vec<usize>,
     exit: bool,
     state: ListState,
 }
@@ -61,15 +72,16 @@ impl FileManager {
                 panic!("Failed to read directory: {}", e);
             })
             .filter_map(|entry_result| {
-                entry_result.ok().map(|entry| entry.path()) // direntry -> pathbuf
+                entry_result
+                    .ok()
+                    .map(|entry| entry.path().file_name().unwrap().to_owned()) // direntry -> pathbuf -> osstr
             })
             .collect();
 
         let items: Vec<String> = self
             .path_items
             .iter()
-            .filter_map(|path_buf| path_buf.strip_prefix(&self.path).ok())
-            .filter_map(|path_buf| path_buf.to_str().map(str::to_owned)) // pathbuf to string
+            .map(|file_name| String::from(file_name.to_str().unwrap()))
             .collect();
 
         let list = List::new(items)
@@ -82,7 +94,9 @@ impl FileManager {
 
     pub fn render_peekable_items(&mut self, area: Rect, buf: &mut Buffer) {
         if let Some(path_val) = self.state.selected() {
-            let cur_path: PathBuf = [&self.path, &self.path_items[path_val]].iter().collect();
+            let cur_path: PathBuf = [&self.path, &PathBuf::from(&self.path_items[path_val])]
+                .iter()
+                .collect();
 
             let block = Block::bordered()
                 .title(Line::from(vec![
@@ -144,31 +158,64 @@ impl FileManager {
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+                match self.handle_key_event(key_event) {
+                    Action::NextItem => self.state.select_next(),
+                    Action::PreviousItem => self.state.select_previous(),
+                    Action::EnterItem => {
+                        if let Some(path_val) = self.state.selected() {
+                            let new_path: PathBuf =
+                                [&self.path, &PathBuf::from(&self.path_items[path_val])]
+                                    .iter()
+                                    .collect();
+
+                            match metadata(&new_path) {
+                                Ok(metadata) => {
+                                    if metadata.is_dir() {
+                                        self.path.push(&PathBuf::from(&self.path_items[path_val]));
+                                        self.past_states.push(path_val);
+                                        self.state.select_first();
+                                    }
+                                }
+                                Err(e) => eprintln!(
+                                    "Error getting metadata of path: {}\n{}",
+                                    new_path.display(),
+                                    e
+                                ),
+                            }
+                        }
+                    }
+                    Action::ExitItem => {
+                        self.path.pop();
+
+                        let past_state = self.past_states.pop();
+
+                        if past_state != None {
+                            self.state.select(past_state);
+                        } else {
+                            self.state.select_first();
+                        }
+                    }
+                    Action::Quit => self.exit(),
+                    _ => {}
+                }
             }
             _ => {}
         }
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) {
+    fn handle_key_event(&mut self, key: KeyEvent) -> Action {
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => self.exit(),
-            KeyCode::Char('s') | KeyCode::Down => self.select_next(),
-            KeyCode::Char('w') | KeyCode::Up => self.select_previous(),
-            _ => {}
+            KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
+            KeyCode::Char('s') | KeyCode::Down => Action::NextItem,
+            KeyCode::Char('w') | KeyCode::Up => Action::PreviousItem,
+            KeyCode::Enter | KeyCode::Right => Action::EnterItem,
+            KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
+            _ => Action::None,
         }
     }
 
     fn exit(&mut self) {
         self.exit = true;
-    }
-
-    fn select_next(&mut self) {
-        self.state.select_next();
-    }
-
-    fn select_previous(&mut self) {
-        self.state.select_previous();
     }
 }
