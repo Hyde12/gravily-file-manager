@@ -1,13 +1,12 @@
-use ratatui::widgets::{List, ListState, Paragraph, StatefulWidget};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::Stylize,
     symbols::border,
     text::Line,
-    widgets::{Block, Widget},
+    widgets::{Block, List, ListState, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
 use tui_input::Input;
@@ -51,6 +50,7 @@ pub struct FileManager {
     past_states: Vec<usize>,
     input_mode: InputMode,
     input: Input,
+    input_area: Rect,
     exit: bool,
     state: ListState,
 }
@@ -177,17 +177,54 @@ impl FileManager {
         }
     }
 
-    pub fn render_input_text(&self) {
-        match self.input_mode {
-            InputMode::Operation => {
-                todo!()
-            }
-            _ => {}
-        }
+    pub fn render_input_text(&mut self, frame: &mut Frame, area: Rect) {
+        let width = area.width.max(3) - 3;
+        let scroll = self.input.visual_scroll(width as usize);
+
+        let block = Block::bordered()
+            .title(" Input ")
+            .border_set(border::ROUNDED);
+
+        let text = Line::from(self.input.to_string());
+
+        let input_box = Paragraph::new(text)
+            .alignment(ratatui::layout::Alignment::Left)
+            .block(block)
+            .wrap(Wrap { trim: true })
+            .scroll((0, scroll as u16));
+
+        frame.render_widget(input_box, area);
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area());
+        let horizontal_area = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([Constraint::Percentage(100), Constraint::Min(3)])
+            .split(frame.area());
+        let list_area = horizontal_area[0];
+
+        // Render the file manager widget (which calls render_file_items, etc.)
+
+        // ... your cursor logic remains
+        match self.input_mode {
+            InputMode::Operation => {
+                // Use the now-set self.input_area
+                let area = horizontal_area[1];
+                let width = area.width.max(3).saturating_sub(3); // Use saturating_sub for safety
+                let scroll = self.input.visual_scroll(width as usize);
+                let cursor_pos = self.input.visual_cursor().saturating_sub(scroll);
+
+                // +1 for the block's left border, +1 for the block's top border
+                let x = area.x + 1 + cursor_pos as u16;
+                let y = area.y + 1;
+
+                frame.set_cursor_position((x, y));
+            }
+            _ => {}
+        }
+
+        self.render_input_text(frame, horizontal_area[1]);
+        frame.render_widget(self, list_area); // Or better: frame.render_widget(self, list_area);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
