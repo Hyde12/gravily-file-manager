@@ -26,13 +26,19 @@ impl Widget for &mut FileManager {
             .title_bottom(instructions.centered())
             .border_set(border::PLAIN);
 
+        let horizontal_area = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([Constraint::Percentage(93), Constraint::Percentage(7)])
+            .split(main_block.inner(area));
+
         let inner_area = Layout::default()
             .direction(ratatui::layout::Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(main_block.inner(area));
+            .split(horizontal_area[0]);
 
         main_block.render(area, buf);
 
+        self.render_input_text();
         self.render_file_items(inner_area[0], buf);
         self.render_peekable_items(inner_area[1], buf);
     }

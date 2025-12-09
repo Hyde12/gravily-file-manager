@@ -1,14 +1,17 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::widgets::{List, ListState, Paragraph, StatefulWidget};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::Rect,
     style::Stylize,
     symbols::border,
     text::Line,
     widgets::{Block, Widget},
 };
+
+use tui_input::Input;
+use tui_input::backend::crossterm::EventHandler;
 
 use std::env::var;
 use std::ffi::OsString;
@@ -23,8 +26,22 @@ enum Action {
     PreviousItem,
     EnterItem,
     ExitItem,
+    NavigationInputMode,
+    CommandInputMode,
+    AddFile,
+    DeleteFile,
+    RenameFile,
+    InputChar,
     Quit,
     None,
+}
+
+#[derive(Debug, Default, PartialEq)]
+enum InputMode {
+    #[default]
+    Navigation,
+    Command,
+    Operation,
 }
 
 #[derive(Debug, Default)]
@@ -32,6 +49,8 @@ pub struct FileManager {
     path: PathBuf,
     path_items: Vec<OsString>,
     past_states: Vec<usize>,
+    input_mode: InputMode,
+    input: Input,
     exit: bool,
     state: ListState,
 }
@@ -158,14 +177,24 @@ impl FileManager {
         }
     }
 
+    pub fn render_input_text(&self) {
+        match self.input_mode {
+            InputMode::Operation => {
+                todo!()
+            }
+            _ => {}
+        }
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
+        let event = event::read()?;
+        match &event {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                match self.handle_key_event(key_event) {
+                match self.handle_key_event(*key_event) {
                     Action::NextItem => self.state.select_next(),
                     Action::PreviousItem => self.state.select_previous(),
                     Action::EnterItem => {
@@ -202,6 +231,12 @@ impl FileManager {
                             self.state.select_first();
                         }
                     }
+                    Action::NavigationInputMode => self.input_mode = InputMode::Navigation,
+                    Action::CommandInputMode => self.input_mode = InputMode::Command,
+                    Action::AddFile => self.input_mode = InputMode::Operation,
+                    Action::InputChar => {
+                        self.input.handle_event(&event);
+                    }
                     Action::Quit => self.exit(),
                     _ => {}
                 }
@@ -212,13 +247,22 @@ impl FileManager {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Action {
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
-            KeyCode::Char('j') | KeyCode::Down => Action::NextItem,
-            KeyCode::Char('k') | KeyCode::Up => Action::PreviousItem,
-            KeyCode::Char('l') | KeyCode::Enter | KeyCode::Right => Action::EnterItem,
-            KeyCode::Char('h') | KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
-            _ => Action::None,
+        if self.input_mode == InputMode::Navigation {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
+                KeyCode::Char('j') | KeyCode::Down => Action::NextItem,
+                KeyCode::Char('k') | KeyCode::Up => Action::PreviousItem,
+                KeyCode::Char('l') | KeyCode::Enter | KeyCode::Right => Action::EnterItem,
+                KeyCode::Char('h') | KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
+                KeyCode::Char('a') => Action::AddFile,
+                KeyCode::Char('!') => Action::CommandInputMode,
+                _ => Action::None,
+            }
+        } else {
+            match key.code {
+                KeyCode::Esc => Action::NavigationInputMode,
+                _ => Action::InputChar,
+            }
         }
     }
 
