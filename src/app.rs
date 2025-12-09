@@ -50,7 +50,6 @@ pub struct FileManager {
     past_states: Vec<usize>,
     input_mode: InputMode,
     input: Input,
-    input_area: Rect,
     exit: bool,
     state: ListState,
 }
