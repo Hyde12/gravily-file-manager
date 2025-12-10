@@ -115,12 +115,21 @@ impl FileManager {
         StatefulWidget::render(list, area, buf, &mut self.state);
     }
 
-    pub fn render_peekable_items(&mut self, area: Rect, buf: &mut Buffer) {
+    fn get_hovered_dir(&mut self) -> PathBuf {
         if let Some(path_val) = self.state.selected() {
             let cur_path: PathBuf = [&self.path, &PathBuf::from(&self.path_items[path_val])]
                 .iter()
                 .collect();
 
+            return cur_path;
+        }
+
+        PathBuf::from(&self.path)
+    }
+
+    pub fn render_peekable_items(&mut self, area: Rect, buf: &mut Buffer) {
+        let cur_path = self.get_hovered_dir();
+        if cur_path != PathBuf::from(&self.path) {
             let block = Block::bordered()
                 .title(Line::from(vec![
                     " ".into(),
@@ -267,7 +276,10 @@ impl FileManager {
                             self.state.select_first();
                         }
                     }
-                    Action::NavigationInputMode => self.input_mode = InputMode::Navigation,
+                    Action::NavigationInputMode => {
+                        self.input_mode = InputMode::Navigation;
+                        self.input.reset();
+                    }
                     Action::CommandInputMode => self.input_mode = InputMode::Command,
                     Action::AddFile => self.input_mode = InputMode::Operation,
                     Action::InputChar => {
@@ -280,6 +292,20 @@ impl FileManager {
             _ => {}
         }
         Ok(())
+    }
+
+    fn create_file(&mut self, file_name: String) -> io::Result<bool> {
+        let new_file_path: PathBuf = [&self.path, &PathBuf::from(file_name)].iter().collect();
+        match new_file_path.try_exists() {
+            Ok(new_file_exists) => {
+                if !new_file_exists {
+                    return Ok(false);
+                }
+
+                return Ok(true);
+            }
+            Err(e) => return Err(e),
+        }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Action {
