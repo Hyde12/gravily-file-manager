@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use crate::gravily::OperationType::{Add, Delete};
 use whoami::DesktopEnv;
+use termimage::{Options};
 
 #[derive(Debug, PartialEq)]
 enum OperationType {
@@ -39,6 +40,7 @@ pub struct FileManager {
     error: String,
     exit: bool,
     state: ListState,
+    ops: Option<Options>,
 }
 
 impl FileManager {

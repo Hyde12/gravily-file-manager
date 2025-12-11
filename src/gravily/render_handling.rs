@@ -7,11 +7,56 @@ use ratatui::{
     style::Stylize,
     symbols::border,
     text::Line,
+    style::Style,
+    style::Color,
     widgets::{Block, List, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
 use std::fs::{metadata, read_dir, read_to_string};
 use std::path::PathBuf;
+use image::{DynamicImage, GenericImageView, imageops::FilterType, Pixel};
+
+
+pub struct ImageWidget {
+    img: DynamicImage,
+}
+
+impl ImageWidget {
+    pub fn new(img: DynamicImage) -> Self {
+        Self { img }
+    }
+}
+
+impl Widget for ImageWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let resized = self.img.resize_exact(
+            area.width as u32,
+            area.height as u32 * 2,
+            FilterType::Triangle,
+        );
+
+        let (img_width, img_height) = resized.dimensions();
+
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let top_pixel = resized.get_pixel(x as u32, y as u32 * 2).to_rgba();
+                let bottom_pixel = if y as u32 * 2 + 1 < img_height {
+                    resized.get_pixel(x as u32, y as u32 * 2 + 1).to_rgba()
+                } else {
+                    top_pixel
+                };
+
+                let fg = Color::Rgb(top_pixel[0], top_pixel[1], top_pixel[2]);
+                let bg = Color::Rgb(bottom_pixel[0], bottom_pixel[1], bottom_pixel[2]);
+
+                buf.get_mut(area.x + x, area.y + y)
+                    .set_style(Style::default().fg(fg).bg(bg))
+                    .set_symbol("▀");
+            }
+        }
+    }
+}
+
 
 impl FileManager {
     pub fn render_error_text(&mut self, frame: &mut Frame, area: Rect) {
@@ -155,8 +200,14 @@ impl FileManager {
                     } else if metadata.is_file() {
                         if let Ok(file_text) = read_to_string(&cur_path) {
                             Paragraph::new(file_text).block(block).render(area, buf);
+                            return;
                         }
-                    }
+                        if let Ok(img) = image::open(&cur_path) {
+                            let image_widget = ImageWidget::new(img);
+                            image_widget.render(area, buf);
+
+                        }
+                        }
                 }
                 Err(e) => {
                     self.error = format!(

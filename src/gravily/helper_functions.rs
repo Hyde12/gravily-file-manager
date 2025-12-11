@@ -3,7 +3,16 @@ use super::FileManager;
 use std::fs::File;
 use std::fs::metadata;
 use std::fs::remove_file;
+use std::path::Path;
 use std::path::PathBuf;
+use termimage::{Options};
+
+
+
+
+
+
+
 
 impl FileManager {
     pub fn get_hovered_dir(&mut self) -> PathBuf {
@@ -42,6 +51,23 @@ impl FileManager {
             }
         }
     }
+
+    pub fn load_as_ansi(&mut self,path: &PathBuf, width: u16, height: u16){  
+        let file_name = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("<unknown>")
+            .to_string();
+        let opts = Options {
+            image: (file_name, path.to_path_buf()),
+            size: (width as u32, height as u32),
+            preserve_aspect: true,
+            ansi_out: None,
+        };
+
+        self.ops = Some(opts);
+    }
+
 
     pub fn exit_dir(&mut self) {
         self.path.pop();
