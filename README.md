@@ -9,7 +9,8 @@ A fast, keyboard-driven file manager for the terminal, built in **Rust** using t
 - **⚡️ Blazing Fast:** Leverages Rust's performance for snappy navigation and operation.
 - **⌨️ Vim-like Keybindings:** Efficient navigation and file manipulation using familiar modal editing concepts.
 - **📂 Standard Operations:** Create, delete, and rename files.
-
+- **👀 Real-time Previews:** Displays file content (text, image etc.) in a dedicated preview pane.
+  
 ---
 
 ## ✅ To-Do / Roadmap
@@ -17,7 +18,7 @@ A fast, keyboard-driven file manager for the terminal, built in **Rust** using t
 Features and improvements planned for development (from most to least prioritized):
 
 - ~~**File Operations:** Be able to add, edit, rename, within the CLI.~~ _still have to add copying and moving, plus the same operations for directories_
-- **Image Preview:** Ability to see image previews in the CLI.
+- ~~**Image Preview:** Ability to see image previews in the CLI.~~ _thank you [@venoosoo](https://github.com/venoosoo)_
 - **Built-in Shell Execution:** Add a keybinding (e.g., `!`) to run shell commands without exiting.
 - **Syntax Highlighting:** Highlight the syntax of certain previewed files.
 - **User Customization:** Change the colors, icons, etc., via json file (for easy pywal integration).
