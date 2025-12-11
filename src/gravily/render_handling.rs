@@ -8,10 +8,14 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::Stylize,
+    style::{Color, Style},
     symbols::border,
     text::Line,
     widgets::{Block, List, Paragraph, StatefulWidget, Widget, Wrap, block::Title},
 };
+
+use crate::gravily::ImageWidget;
+use image::{GenericImageView, Pixel, imageops::FilterType};
 
 use std::fs::{metadata, read_dir, read_to_string};
 use std::path::PathBuf;
@@ -209,6 +213,11 @@ impl FileManager {
                     } else if metadata.is_file() {
                         if let Ok(file_text) = read_to_string(&cur_path) {
                             Paragraph::new(file_text).block(block).render(area, buf);
+                            return;
+                        }
+                        if let Ok(img) = image::open(&cur_path) {
+                            let image_widget = ImageWidget::new(img);
+                            image_widget.render(area, buf);
                         }
                     }
                 }
@@ -219,6 +228,37 @@ impl FileManager {
                         e
                     )
                 }
+            }
+        }
+    }
+}
+
+impl Widget for ImageWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let resized = self.img.resize_exact(
+            area.width as u32,
+            area.height as u32 * 2,
+            FilterType::Nearest,
+        );
+
+        let (_img_width, img_height) = resized.dimensions();
+
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let top_pixel = resized.get_pixel(x as u32, y as u32 * 2).to_rgba();
+                let bottom_pixel = if y as u32 * 2 + 1 < img_height {
+                    resized.get_pixel(x as u32, y as u32 * 2 + 1).to_rgba()
+                } else {
+                    top_pixel
+                };
+
+                let fg = Color::Rgb(top_pixel[0], top_pixel[1], top_pixel[2]);
+                let bg = Color::Rgb(bottom_pixel[0], bottom_pixel[1], bottom_pixel[2]);
+
+                buf.cell_mut((area.x + x, area.y + y))
+                    .unwrap()
+                    .set_style(Style::default().fg(fg).bg(bg))
+                    .set_symbol("▀");
             }
         }
     }

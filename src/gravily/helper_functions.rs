@@ -4,6 +4,9 @@ use std::fs::File;
 use std::fs::metadata;
 use std::fs::remove_file;
 use std::fs::rename;
+
+use std::path::Path;
+
 use std::path::PathBuf;
 
 impl FileManager {
@@ -50,6 +53,14 @@ impl FileManager {
                 }
             }
         }
+    }
+
+    pub fn load_as_ansi(&mut self, path: &PathBuf) {
+        Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("<unknown>")
+            .to_string();
     }
 
     pub fn exit_dir(&mut self) {

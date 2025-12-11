@@ -4,6 +4,8 @@ use ratatui::{
     widgets::ListState,
 };
 
+use image::DynamicImage;
+
 use tui_input::Input;
 
 use std::env::var;
@@ -40,6 +42,10 @@ pub struct FileManager {
     error: String,
     exit: bool,
     state: ListState,
+}
+
+pub struct ImageWidget {
+    img: DynamicImage,
 }
 
 impl FileManager {
@@ -103,6 +109,12 @@ impl FileManager {
 
         let list_area = horizontal_area[0];
         frame.render_widget(self, list_area);
+    }
+}
+
+impl ImageWidget {
+    pub fn new(img: DynamicImage) -> Self {
+        Self { img }
     }
 }
 
