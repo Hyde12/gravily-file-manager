@@ -3,6 +3,7 @@ use super::FileManager;
 use std::fs::File;
 use std::fs::metadata;
 use std::fs::remove_file;
+use std::fs::rename;
 use std::path::PathBuf;
 
 impl FileManager {
@@ -16,6 +17,14 @@ impl FileManager {
         }
 
         PathBuf::from(&self.path)
+    }
+
+    pub fn is_hovering(&self) -> bool {
+        if let Some(_) = self.state.selected() {
+            return true;
+        }
+
+        false
     }
 
     pub fn enter_hovered_dir(&mut self) {
@@ -66,6 +75,31 @@ impl FileManager {
         match new_file {
             Ok(_new_file) => return,
             Err(e) => self.error = format!("Error making {}: {}", file_name, e.to_string()),
+        }
+    }
+
+    pub fn rename_file(&mut self) {
+        self.error = String::new();
+
+        let file_name = self.input.value_and_reset();
+        let hovered_file = self.get_hovered_dir();
+
+        if hovered_file == self.path {
+            self.error = format!(
+                "Error renaming file {:?}: File must not be current directory.",
+                hovered_file,
+            );
+            return;
+        }
+
+        let new_file: PathBuf = [&self.path, &PathBuf::from(file_name)].iter().collect();
+        let renamed_file = rename(&hovered_file, new_file);
+
+        match renamed_file {
+            Ok(_renamed_file) => return,
+            Err(e) => {
+                self.error = format!("Error renaming file {:?}: {}", hovered_file, e.to_string())
+            }
         }
     }
 

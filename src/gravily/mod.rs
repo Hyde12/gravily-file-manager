@@ -11,11 +11,11 @@ use std::ffi::OsString;
 use std::io;
 use std::path::PathBuf;
 
-use crate::gravily::OperationType::{Add, Delete};
+use crate::gravily::OperationType::{Add, Delete, Rename};
 use whoami::DesktopEnv;
 
 #[derive(Debug, PartialEq)]
-enum OperationType {
+pub enum OperationType {
     Add,
     Delete,
     Rename,
@@ -27,6 +27,7 @@ enum InputMode {
     Navigation,
     Command,
     Operation(OperationType),
+    Confirmation(OperationType),
 }
 
 #[derive(Debug, Default)]
@@ -88,20 +89,12 @@ impl FileManager {
                 }
             }
 
-            InputMode::Operation(Add) => {
-                let area = horizontal_area[1];
-                let width = area.width.max(3).saturating_sub(3);
-                let scroll = self.input.visual_scroll(width as usize);
-                let cursor_pos = self.input.visual_cursor().saturating_sub(scroll);
-
-                let x = area.x + 1 + cursor_pos as u16;
-                let y = area.y + 1;
-
-                frame.set_cursor_position((x, y));
+            InputMode::Operation(Add) | InputMode::Operation(Rename) => {
+                self.render_cursor(frame, horizontal_area[1]);
                 self.render_input_text(frame, horizontal_area[1]);
             }
 
-            InputMode::Operation(Delete) => {
+            InputMode::Confirmation(_) => {
                 self.render_confirmation_text(frame, horizontal_area[1]);
             }
 

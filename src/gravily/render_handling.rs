@@ -1,4 +1,7 @@
+use crate::gravily::InputMode;
+
 use super::FileManager;
+use crate::gravily::OperationType::{Add, Delete, Rename};
 
 use ratatui::{
     Frame,
@@ -7,13 +10,24 @@ use ratatui::{
     style::Stylize,
     symbols::border,
     text::Line,
-    widgets::{Block, List, Paragraph, StatefulWidget, Widget, Wrap},
+    widgets::{Block, List, Paragraph, StatefulWidget, Widget, Wrap, block::Title},
 };
 
 use std::fs::{metadata, read_dir, read_to_string};
 use std::path::PathBuf;
 
 impl FileManager {
+    pub fn render_cursor(&mut self, frame: &mut Frame, area: Rect) {
+        let width = area.width.max(3).saturating_sub(3);
+        let scroll = self.input.visual_scroll(width as usize);
+        let cursor_pos = self.input.visual_cursor().saturating_sub(scroll);
+
+        let x = area.x + 1 + cursor_pos as u16;
+        let y = area.y + 1;
+
+        frame.set_cursor_position((x, y));
+    }
+
     pub fn render_error_text(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .title(" Error ('x' to close) ")
@@ -30,31 +44,71 @@ impl FileManager {
     }
 
     pub fn render_confirmation_text(&mut self, frame: &mut Frame, area: Rect) {
-        if let Some(path_val) = self.state.selected() {
-            let file_name = &self.path_items[path_val];
+        let block = Block::bordered()
+            .title(" Confirmation ('Y' to Confirm or 'N' to Cancel) ")
+            .border_set(border::ROUNDED);
 
-            let block = Block::bordered()
-                .title(" Confirmation ('Y' to Confirm or 'N' to Cancel) ")
-                .border_set(border::ROUNDED);
+        let mut text = Line::from("PLACEHOLDER");
 
-            let text = Line::from(format!("Are you sure you want to delete {:?}?", file_name));
+        match &self.input_mode {
+            InputMode::Confirmation(Add) => {
+                text = Line::from(format!(
+                    "Are you sure you want to make {:?} as a new file?",
+                    self.input.value()
+                ));
+            }
 
-            let error_box = Paragraph::new(text)
-                .alignment(ratatui::layout::Alignment::Left)
-                .block(block)
-                .wrap(Wrap { trim: true });
+            InputMode::Confirmation(Rename) => {
+                if let Some(path_val) = self.state.selected() {
+                    let file_name = &self.path_items[path_val];
 
-            frame.render_widget(error_box, area)
+                    text = Line::from(format!(
+                        "Are you sure you want to rename {:?} to \"{}\"?",
+                        file_name,
+                        self.input.value()
+                    ));
+                }
+            }
+
+            InputMode::Operation(Delete) | InputMode::Confirmation(Delete) => {
+                if let Some(path_val) = self.state.selected() {
+                    let file_name = &self.path_items[path_val];
+
+                    text = Line::from(format!("Are you sure you want to delete {:?}?", file_name));
+                }
+            }
+            _ => {}
         }
+
+        let confirmation_box = Paragraph::new(text)
+            .alignment(ratatui::layout::Alignment::Left)
+            .block(block)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(confirmation_box, area)
     }
 
     pub fn render_input_text(&mut self, frame: &mut Frame, area: Rect) {
+        let mut title = Title::from(" Input ");
         let width = area.width.max(3) - 3;
         let scroll = self.input.visual_scroll(width as usize);
 
-        let block = Block::bordered()
-            .title(" Input ")
-            .border_set(border::ROUNDED);
+        match &self.input_mode {
+            InputMode::Operation(Add) => {
+                title = Title::from(" Adding new file named... ");
+            }
+
+            InputMode::Operation(Rename) => {
+                if let Some(path_val) = self.state.selected() {
+                    let file_name = &self.path_items[path_val];
+
+                    title = Title::from(format!(" Renaming file {:?} into... ", file_name,));
+                }
+            }
+            _ => {}
+        }
+
+        let block = Block::bordered().title(title).border_set(border::ROUNDED);
 
         let text = Line::from(self.input.to_string());
 
