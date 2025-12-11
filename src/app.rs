@@ -12,12 +12,13 @@ use ratatui::{
 use tui_input::Input;
 use tui_input::backend::crossterm::EventHandler;
 
-use std::env::var;
 use std::ffi::OsString;
 use std::fs::{metadata, read_dir, read_to_string};
 use std::io;
 use std::path::PathBuf;
+use std::{env::var, fs::File};
 
+use crate::app::OperationType::Add;
 use whoami::DesktopEnv;
 
 enum Action {
@@ -30,9 +31,18 @@ enum Action {
     AddFile,
     DeleteFile,
     RenameFile,
+    Enter,
     InputChar,
+    CloseMessage,
     Quit,
     None,
+}
+
+#[derive(Debug, PartialEq)]
+enum OperationType {
+    Add,
+    Delete,
+    Rename,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -40,7 +50,7 @@ enum InputMode {
     #[default]
     Navigation,
     Command,
-    Operation,
+    Operation(OperationType),
 }
 
 #[derive(Debug, Default)]
@@ -50,6 +60,7 @@ pub struct FileManager {
     past_states: Vec<usize>,
     input_mode: InputMode,
     input: Input,
+    error: String,
     exit: bool,
     state: ListState,
 }
@@ -185,7 +196,7 @@ impl FileManager {
         }
     }
 
-    pub fn render_input_text(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_input_text(&mut self, frame: &mut Frame, area: Rect) {
         let width = area.width.max(3) - 3;
         let scroll = self.input.visual_scroll(width as usize);
 
@@ -204,35 +215,57 @@ impl FileManager {
         frame.render_widget(input_box, area);
     }
 
+    pub fn render_error_text(&mut self, frame: &mut Frame, area: Rect) {
+        let block = Block::bordered()
+            .title(" Error ('x' to close) ")
+            .border_set(border::ROUNDED);
+
+        let text = Line::from(self.error.to_string());
+
+        let error_box = Paragraph::new(text)
+            .alignment(ratatui::layout::Alignment::Left)
+            .block(block)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(error_box, area)
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
-        let horizontal_area = Layout::default()
+        let mut horizontal_area = Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
-            .constraints([Constraint::Percentage(100), Constraint::Min(3)])
+            .constraints([Constraint::Percentage(100)])
             .split(frame.area());
-        let list_area = horizontal_area[0];
 
-        // Render the file manager widget (which calls render_file_items, etc.)
+        if self.input_mode != InputMode::Navigation || !self.error.is_empty() {
+            horizontal_area = Layout::default()
+                .direction(ratatui::layout::Direction::Vertical)
+                .constraints([Constraint::Percentage(90), Constraint::Min(3)])
+                .split(frame.area());
+        }
 
-        // ... your cursor logic remains
         match self.input_mode {
-            InputMode::Operation => {
-                // Use the now-set self.input_area
+            InputMode::Navigation => {
+                if !self.error.is_empty() {
+                    self.render_error_text(frame, horizontal_area[1]);
+                }
+            }
+            InputMode::Operation(_) => {
                 let area = horizontal_area[1];
-                let width = area.width.max(3).saturating_sub(3); // Use saturating_sub for safety
+                let width = area.width.max(3).saturating_sub(3);
                 let scroll = self.input.visual_scroll(width as usize);
                 let cursor_pos = self.input.visual_cursor().saturating_sub(scroll);
 
-                // +1 for the block's left border, +1 for the block's top border
                 let x = area.x + 1 + cursor_pos as u16;
                 let y = area.y + 1;
 
                 frame.set_cursor_position((x, y));
+                self.render_input_text(frame, horizontal_area[1]);
             }
             _ => {}
         }
 
-        self.render_input_text(frame, horizontal_area[1]);
-        frame.render_widget(self, list_area); // Or better: frame.render_widget(self, list_area);
+        let list_area = horizontal_area[0];
+        frame.render_widget(self, list_area);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -281,10 +314,18 @@ impl FileManager {
                         self.input.reset();
                     }
                     Action::CommandInputMode => self.input_mode = InputMode::Command,
-                    Action::AddFile => self.input_mode = InputMode::Operation,
+                    Action::AddFile => self.input_mode = InputMode::Operation(Add),
                     Action::InputChar => {
                         self.input.handle_event(&event);
                     }
+                    Action::Enter => {
+                        match self.input_mode {
+                            InputMode::Operation(Add) => self.create_file(),
+                            _ => {}
+                        }
+                        self.input_mode = InputMode::Navigation;
+                    }
+                    Action::CloseMessage => self.error = String::new(),
                     Action::Quit => self.exit(),
                     _ => {}
                 }
@@ -292,20 +333,6 @@ impl FileManager {
             _ => {}
         }
         Ok(())
-    }
-
-    fn create_file(&mut self, file_name: String) -> io::Result<bool> {
-        let new_file_path: PathBuf = [&self.path, &PathBuf::from(file_name)].iter().collect();
-        match new_file_path.try_exists() {
-            Ok(new_file_exists) => {
-                if !new_file_exists {
-                    return Ok(false);
-                }
-
-                return Ok(true);
-            }
-            Err(e) => return Err(e),
-        }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Action {
@@ -317,14 +344,30 @@ impl FileManager {
                 KeyCode::Char('l') | KeyCode::Enter | KeyCode::Right => Action::EnterItem,
                 KeyCode::Char('h') | KeyCode::Backspace | KeyCode::Left => Action::ExitItem,
                 KeyCode::Char('a') => Action::AddFile,
+                KeyCode::Char('x') => Action::CloseMessage,
                 KeyCode::Char('!') => Action::CommandInputMode,
                 _ => Action::None,
             }
         } else {
             match key.code {
                 KeyCode::Esc => Action::NavigationInputMode,
+                KeyCode::Enter => Action::Enter,
                 _ => Action::InputChar,
             }
+        }
+    }
+
+    fn create_file(&mut self) {
+        self.error = String::new();
+
+        let file_name = self.input.value_and_reset();
+        let new_file_path: PathBuf = [&self.path, &PathBuf::from(&file_name)].iter().collect();
+
+        let new_file = File::create_new(new_file_path);
+
+        match new_file {
+            Ok(_new_file) => return,
+            Err(e) => self.error = format!("Error making {}: {}", file_name, e.to_string()),
         }
     }
 
