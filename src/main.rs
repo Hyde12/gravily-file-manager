@@ -1,9 +1,9 @@
 use std::io;
 
-mod app;
+mod gravily;
 mod ui;
 
-use app::FileManager;
+use gravily::FileManager;
 
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
